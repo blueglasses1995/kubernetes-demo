@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-first-pod
+  labels:
+    app: nginx
+    environment: learning
+spec:
+  containers:
+  - name: nginx-container
+    image: nginx:1.20
+    ports:
+    - containerPort: 80
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
