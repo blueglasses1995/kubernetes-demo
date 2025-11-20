@@ -1,0 +1,105 @@
+# PersistentVolume（管理者が作成）
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data/mysql"
+---
+# PersistentVolumeClaim（ユーザーが要求）
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  storageClassName: manual
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Secret for MySQL password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mysql-secret
+type: Opaque
+data:
+  # "password" をbase64エンコードした値
+  password: cGFzc3dvcmQ=
+---
+# MySQL Deployment with PersistentVolume
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-storage
+          mountPath: /var/lib/mysql
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: mysql-storage
+        persistentVolumeClaim:
+          claimName: mysql-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+  clusterIP: None  # Headless Service
+
+# 使い方:
+# 1. デプロイ: kubectl apply -f 05-persistent-volume.yaml
+# 2. PV/PVC状態確認:
+#    kubectl get pv,pvc
+# 3. Podが起動するまで待つ:
+#    kubectl get pods -w
+# 4. データベースを作成:
+#    kubectl exec -it <mysql-pod-name> -- mysql -u root -ppassword -e "CREATE DATABASE testdb;"
+# 5. Podを削除:
+#    kubectl delete pod <mysql-pod-name>
+# 6. 新しいPodが起動したら、データが残っていることを確認:
+#    kubectl exec -it <new-mysql-pod-name> -- mysql -u root -ppassword -e "SHOW DATABASES;"
+# 7. testdbが存在すればデータが永続化されている！

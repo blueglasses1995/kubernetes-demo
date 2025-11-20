@@ -1,0 +1,82 @@
+# まずNamespaceを作成: kubectl create namespace limited-resources
+
+# ResourceQuota - Namespace全体のリソース制限
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: limited-resources
+spec:
+  hard:
+    requests.cpu: "2"        # 合計CPUリクエスト上限
+    requests.memory: 2Gi     # 合計メモリリクエスト上限
+    limits.cpu: "4"          # 合計CPUリミット上限
+    limits.memory: 4Gi       # 合計メモリリミット上限
+    pods: "10"               # Pod数上限
+    services: "5"            # Service数上限
+    persistentvolumeclaims: "3"  # PVC数上限
+---
+# LimitRange - 個別のPod/Containerのデフォルト値と制限
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: limit-range
+  namespace: limited-resources
+spec:
+  limits:
+  # Container単位の制限
+  - type: Container
+    default:               # デフォルトのlimits（未指定時）
+      cpu: 500m
+      memory: 512Mi
+    defaultRequest:        # デフォルトのrequests（未指定時）
+      cpu: 200m
+      memory: 256Mi
+    max:                   # 最大値
+      cpu: 1
+      memory: 1Gi
+    min:                   # 最小値
+      cpu: 100m
+      memory: 128Mi
+  # Pod単位の制限
+  - type: Pod
+    max:
+      cpu: 2
+      memory: 2Gi
+---
+# テスト用Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quota-test
+  namespace: limited-resources
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: quota-test
+  template:
+    metadata:
+      labels:
+        app: quota-test
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.25-alpine
+        # resourcesを指定しない場合、LimitRangeのデフォルト値が適用される
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+# 使い方:
+# 1. Namespaceを作成: kubectl create namespace limited-resources
+# 2. 適用: kubectl apply -f 03-resource-quota.yaml
+# 3. Quota確認: kubectl describe resourcequota -n limited-resources
+# 4. LimitRange確認: kubectl describe limitrange -n limited-resources
+# 5. 制限を超えるDeploymentを試す:
+#    kubectl create deployment test --image=nginx --replicas=15 -n limited-resources
+# 6. エラーを確認: kubectl get events -n limited-resources

@@ -1,0 +1,112 @@
+# Backend Application
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+    tier: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        tier: backend
+    spec:
+      containers:
+      - name: api
+        image: hashicorp/http-echo:latest
+        args:
+        - "-text=Backend API"
+        - "-listen=:8080"
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+# Frontend Application（許可される）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+    tier: frontend
+spec:
+  containers:
+  - name: alpine
+    image: alpine:latest
+    command: ["sleep", "3600"]
+---
+# Unauthorized Pod（拒否される）
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unauthorized
+  labels:
+    app: unauthorized
+spec:
+  containers:
+  - name: alpine
+    image: alpine:latest
+    command: ["sleep", "3600"]
+---
+# NetworkPolicy - Backendへのアクセスを制御
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # frontendからのアクセスのみ許可
+  - from:
+    - podSelector:
+        matchLabels:
+          tier: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  # DNS解決を許可
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # 同じNamespace内のPodへの通信を許可
+  - to:
+    - podSelector: {}
+
+# 注意: NetworkPolicyをサポートするCNIプラグインが必要
+# Minikubeの場合: minikube start --cni=calico
+# Kindの場合: デフォルトでサポート
+
+# 使い方:
+# 1. デプロイ: kubectl apply -f 04-network-policy.yaml
+# 2. 許可されたアクセスをテスト:
+#    kubectl exec -it frontend -- sh -c "apk add curl && curl backend-service:8080"
+# 3. 拒否されるアクセスをテスト:
+#    kubectl exec -it unauthorized -- sh -c "apk add curl && curl backend-service:8080"
+#    # これはタイムアウトする
+# 4. NetworkPolicy確認: kubectl describe networkpolicy backend-network-policy

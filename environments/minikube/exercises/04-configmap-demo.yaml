@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  app.env: "development"
+  app.debug: "true"
+  app.name: "Minikube Demo App"
+  database.host: "localhost"
+  database.port: "5432"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-demo-pod
+  labels:
+    app: configmap-demo
+spec:
+  containers:
+  - name: demo-container
+    image: busybox:1.36
+    command: ["sh", "-c", "echo 'App Name: $APP_NAME'; echo 'Environment: $APP_ENV'; sleep 3600"]
+    env:
+    - name: APP_NAME
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: app.name
+    - name: APP_ENV
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: app.env
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "50m"
+      limits:
+        memory: "64Mi"
+        cpu: "100m"
